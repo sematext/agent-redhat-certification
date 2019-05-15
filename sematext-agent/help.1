@@ -1,0 +1,570 @@
+.\"t
+.TH "" "" "" "" ""
+.SS Sematext Agent
+.PP
+Sematext Agent collects a plethora of metrics about hosts (CPU, memory,
+disk, network, processes), containers (both Docker and rkt) and
+orchestrator platforms and ships that to Sematext
+Cloud (https://sematext.com/cloud).
+To gain deep insight into the Linux kernel, Sematext Agent relies on
+eBPF to implant instrumentation points (attach eBPF programs to kprobes)
+on kernel functions.
+This allows for a very efficient and powerful system exploration
+approach.
+It has auto\-discovery capabilities of services deployed on
+physical/virtual hosts and containers, as well as a mechanism for
+reporting inventory info.
+It also collects events from different sources such as OOM
+notifications, container or Kuberentes events.
+.SS Preparation
+.PP
+To run Sematext Docker Agent you will need a Monitoring App Token and a
+Logs App Token.
+If you don\[aq]t have Monitoring and/or Logs Apps yet, you can create a
+Docker Monitoring and Logs Apps
+now (https://apps.sematext.com/ui/integrations).
+.PP
+Note: Sematext UI might not display the INFRA_TOKEN (we are working on
+the release).
+In this case simply ignore the INFRA_TOKEN in the following
+instructions.
+.SS Get started with Docker Engine
+.PP
+Starting a Sematext Agent instance involves creating a new container
+with the following options:
+.IP
+.nf
+\f[C]
+$\ docker\ run\ \-d\ \ \-\-restart\ always\ \-\-privileged\ \-P\ \-\-name\ st\-agent\ \\
+\-v\ /sys/kernel/debug:/sys/kernel/debug\ \\
+\-v\ /var/run/:/var/run/\ \\
+\-v\ /proc:/host/proc:ro\ \\
+\-v\ /etc:/host/etc:ro\ \\
+\-v\ /sys:/host/sys:ro\ \\
+\-v\ /usr/lib:/host/usr/lib:ro\ \\
+\-e\ INFRA_TOKEN=<Infra\ App\ Token>\ \\
+\-e\ CONTAINER_TOKEN=<Docker\ App\ Token>\ \\
+\-e\ JOURNAL_DIR=/var/run/st\-agent\ \\
+\-e\ LOGGING_WRITE_EVENTS=false\ \\
+\-e\ LOGGING_REQUEST_TRACKING=false\ \\
+\-e\ LOGGING_LEVEL=info\ \\
+\-e\ NODE_NAME=`hostname`\ \\
+\-e\ CONTAINER_SKIP_BY_IMAGE=sematext\ \\
+sematext/agent:latest
+\f[]
+.fi
+.PP
+Besides providing several bind mounts for Docker socket, procfs and
+journal directory, tokens are required to ship data to the right place.
+If infra token is given Sematext Agent will gather data about running
+processes on the system, basic operating system metrics,
+machine/instance related information, and so on.
+When container token is provided, the agent will detect active
+containers and start collecting different container metrics such as
+memory usage, network I/O statistics, disk throughput, etc.
+.PP
+In addition to metrics, Sematext Agent also collects events (Docker,
+Kubernetes, agent initialization/termination events, OOM notifications,
+kill signals) and sends them to Sematext\[aq]s event and log receivers.
+.PP
+By default, the US region receiver endpoints are used to ship data to
+Sematext Cloud.
+You can override receiver addresses by passing \f[C]SERVER_BASE_URL\f[]
+for metrics receivers, \f[C]LOGS_RECEIVER_URL\f[] and
+\f[C]EVENTS_RECEIVER_URL\f[] for log and event receivers respectively.
+.SS Configuration file
+.PP
+For fine\-tunning Sematext Agent refer to \f[C]st\-agent.yml\f[]
+configuration file.
+You will have to attach a bind mount with file location and pass the
+\f[C]CONFIG_FILE\f[] environment variable that contains the path to
+aforementioned configuration file.
+.PP
+The configuration file accepts all options (listed below) in YAML
+format.
+.IP
+.nf
+\f[C]
+#\ Sematext\ Agent\ configuration\ file
+infra\-token:\ YourInfrastructureMonitoringToken
+container\-token:\ YourDockerMonitoringToken
+#\ Logs\ token\ to\ store\ Docker\ and\ Kubernetes\ Events\ in\ Sematext\ Logs
+logs\-token:\ YourLogsToken
+#\ Location\ to\ persit\ events,\ when\ backend\ is\ not\ reachable
+journal:\ 
+\ \ dir:\ /var/run/st\-agent
+
+pkg:
+\ enabled:\ false
+\ 
+logging:
+\ \ format:\ json
+\ \ write\-events:\ false
+\ \ request\-tracking:\ false
+\ \ level:\ warning
+\f[]
+.fi
+.SS Run Sematext Agent with a Config File
+.PP
+Mount the configuration file into the container and set the path to the
+configuration file
+\f[C]\-v\ /opt/st\-agent/st\-agent.yml:/opt/st\-agent/st\-agent.yml\ \\\f[]
+via CONFIG_FILE envirnment variable.
+.IP
+.nf
+\f[C]
+$\ docker\ run\ \-d\ \ \-\-restart\ always\ \-\-privileged\ \-P\ \-\-name\ st\-agent\ \\
+\-v\ /sys/kernel/debug:/sys/kernel/debug\ \\
+\-v\ /var/run/:/var/run/\ \\
+\-v\ /proc:/host/proc:ro\ \\
+\-v\ /etc:/host/etc:ro\ \\
+\-v\ /sys:/host/sys:ro\ \\
+\-v\ /usr/lib:/host/usr/lib:ro\ \\
+\-e\ INFRA_TOKEN=<Infra\ App\ Token>\ \\
+\-e\ CONTAINER_TOKEN=<Docker\ App\ Token>\ \\
+\-e\ NODE_NAME=`hostname`\ \\
+\-e\ CONTAINER_SKIP_BY_IMAGE=sematext\ \\
+\-e\ CONFIG_FILE=/opt/st\-agent/st\-agent.yml\ \\
+sematext/agent:latest
+\f[]
+.fi
+.SS Run Sematext Agent on Docker Enterprise / Swarm Service
+.PP
+Create a Docker Monitoring App in Sematext and follow the instructions
+in the UI.
+Sematext Agent can be deployed as global service on all Swarm nodes with
+a single command:
+.IP
+.nf
+\f[C]
+docker\ service\ create\ \-\-mode\ global\ \-\-name\ st\-agent\ \\
+\-\-restart\-condition\ any\ \\
+\-\-mount\ type=bind,src=/var/run,dst=/var/run/\ \\
+\-\-mount\ type=bind,src=/usr/lib,dst=/host/usr/lib\ \\
+\-\-mount\ type=bind,src=/sys/kernel/debug,dst=/sys/kernel/debug\ \\
+\-\-mount\ type=bind,src=/proc,dst=/host/proc,readonly\ \\
+\-\-mount\ type=bind,src=/etc,dst=/host/etc,readonly\ \\
+\-\-mount\ type=bind,src=/sys,dst=/host/sys,readonly\ \\
+\-e\ NODE_NAME={{.Node.Hostname}}\ \\
+\-e\ INFRA_TOKEN=<Infra\ App\ Token>\ \\
+\-e\ CONTAINER_TOKEN=<Docker\ App\ Token>\ \\
+\-e\ JOURNAL_DIR=/var/run/st\-agent\ \\
+\-e\ LOGGING_REQUEST_TRACKING=false\ \\
+\-e\ LOGGING_WRITE_EVENTS=false\ \\
+\-e\ LOGGING_LEVEL=info\ \\
+\-e\ PKG_ENABLED=false\ \\
+sematext/agent:latest
+\f[]
+.fi
+.SS Run Sematext Agent on Kubernetes
+.PP
+Create a Docker Monitoring App in Sematext and follow the instructions
+in the UI.
+.SS RBAC
+.PP
+If your cluster has RBAC enabled add ClusterRole and
+ClusterRoleBindings.
+For ClusterRoleBindings you should update REPLACE_WITH_NAMESPACE value
+to match with namespace where the Sematext agent will be installed:
+.IP
+.nf
+\f[C]
+apiVersion:\ rbac.authorization.k8s.io/v1
+kind:\ ClusterRoleBinding
+metadata:
+\ \ name:\ sematext\-agent
+\ \ labels:
+\ \ \ \ app:\ sematext\-agent
+roleRef:
+\ \ apiGroup:\ rbac.authorization.k8s.io
+\ \ kind:\ ClusterRole
+\ \ name:\ sematext\-agent
+subjects:
+\-\ kind:\ ServiceAccount
+\ \ name:\ sematext\-agent
+\ \ namespace:\ <REPLACE_WITH_NAMESPACE>
+\-\-\-
+apiVersion:\ rbac.authorization.k8s.io/v1
+kind:\ ClusterRole
+metadata:
+\ \ name:\ sematext\-agent
+\ \ labels:
+\ \ \ \ app:\ sematext\-agent
+rules:
+\-\ apiGroups:
+\ \ \-\ ""
+\ \ resources:
+\ \ \-\ events
+\ \ \-\ pods
+\ \ \-\ configmaps
+\ \ \-\ nodes
+\ \ \-\ secrets
+\ \ verbs:
+\ \ \-\ list
+\ \ \-\ get
+\ \ \-\ watch
+\-\ apiGroups:
+\ \ \-\ ""
+\ \ resources:
+\ \ \-\ pods
+\ \ \-\ configmaps
+\ \ verbs:
+\ \ \-\ create
+\ \ \-\ delete
+\ \ \-\ update
+\-\ apiGroups:
+\ \ \-\ apps
+\ \ resources:
+\ \ \-\ deployments
+\ \ verbs:
+\ \ \-\ watch
+\ \ \-\ list
+\f[]
+.fi
+.SS Create and deploy the DaemonSet
+.PP
+Create a file for the deployment st\-agent.yml (Replace Tokens and
+receiver URLs):
+.IP
+.nf
+\f[C]
+apiVersion:\ v1
+kind:\ ServiceAccount
+metadata:
+\ \ name:\ sematext\-agent
+\ \ labels:
+\ \ \ \ app:\ sematext\-agent
+\-\-\-
+apiVersion:\ apps/v1
+kind:\ DaemonSet
+metadata:
+\ \ name:\ sematext\-agent
+\ \ labels:
+\ \ \ \ app:\ sematext\-agent
+spec:
+\ \ selector:
+\ \ \ \ matchLabels:
+\ \ \ \ \ \ app:\ sematext\-agent
+\ \ template:
+\ \ \ \ metadata:
+\ \ \ \ \ \ labels:
+\ \ \ \ \ \ \ \ app:\ sematext\-agent
+\ \ \ \ spec:
+\ \ \ \ \ \ serviceAccountName:\ sematext\-agent
+\ \ \ \ \ \ containers:
+\ \ \ \ \ \ \-\ name:\ agent
+\ \ \ \ \ \ \ \ image:\ sematext/agent:latest
+\ \ \ \ \ \ \ \ imagePullPolicy:\ Always
+\ \ \ \ \ \ \ \ env:
+\ \ \ \ \ \ \ \ \-\ name:\ CONTAINER_TOKEN
+\ \ \ \ \ \ \ \ \ \ value:\ <Docker\ App\ Token>
+\ \ \ \ \ \ \ \ \-\ name:\ INFRA_TOKEN
+\ \ \ \ \ \ \ \ \ \ value:\ <Infra\ App\ Token>
+\ \ \ \ \ \ \ \ \-\ name:\ API_SERVER_HOST
+\ \ \ \ \ \ \ \ \ \ value:\ "0.0.0.0"
+\ \ \ \ \ \ \ \ \-\ name:\ API_SERVER_PORT
+\ \ \ \ \ \ \ \ \ \ value:\ "80"
+\ \ \ \ \ \ \ \ \-\ name:\ JOURNAL_DIR
+\ \ \ \ \ \ \ \ \ \ value:\ "/opt/spm/st\-agent"
+\ \ \ \ \ \ \ \ \-\ name:\ LOGGING_WRITE_EVENTS
+\ \ \ \ \ \ \ \ \ \ value:\ "false"
+\ \ \ \ \ \ \ \ \-\ name:\ LOGGING_REQUEST_TRACKING
+\ \ \ \ \ \ \ \ \ \ value:\ "false"
+\ \ \ \ \ \ \ \ \-\ name:\ LOGGING_LEVEL
+\ \ \ \ \ \ \ \ \ \ value:\ "info"
+\ \ \ \ \ \ \ \ \-\ name:\ KUBERNETES_CLUSTER_ID
+\ \ \ \ \ \ \ \ \ \ value:\ <REPLACE_WITH_CLUSTER_NAME>
+\ \ \ \ \ \ \ \ \-\ name:\ NODE_NAME
+\ \ \ \ \ \ \ \ \ \ valueFrom:\ 
+\ \ \ \ \ \ \ \ \ \ \ \ fieldRef:\ 
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ fieldPath:\ spec.nodeName\ 
+\ \ \ \ \ \ \ \ livenessProbe:\ 
+\ \ \ \ \ \ \ \ \ \ httpGet:\ 
+\ \ \ \ \ \ \ \ \ \ \ \ path:\ /health\ 
+\ \ \ \ \ \ \ \ \ \ \ \ port:\ 80\ 
+\ \ \ \ \ \ \ \ readinessProbe:\ 
+\ \ \ \ \ \ \ \ \ \ httpGet:\ 
+\ \ \ \ \ \ \ \ \ \ \ \ path:\ /health\ 
+\ \ \ \ \ \ \ \ \ \ \ \ port:\ 80\ 
+\ \ \ \ \ \ \ \ volumeMounts:
+\ \ \ \ \ \ \ \ \ \ \-\ name:\ procfs
+\ \ \ \ \ \ \ \ \ \ \ \ mountPath:\ /host/proc
+\ \ \ \ \ \ \ \ \ \ \ \ readOnly:\ true
+\ \ \ \ \ \ \ \ \ \ \-\ name:\ sysfs
+\ \ \ \ \ \ \ \ \ \ \ \ mountPath:\ /host/sys
+\ \ \ \ \ \ \ \ \ \ \ \ readOnly:\ true
+\ \ \ \ \ \ \ \ \ \ \-\ name:\ etc
+\ \ \ \ \ \ \ \ \ \ \ \ mountPath:\ /host/etc
+\ \ \ \ \ \ \ \ \ \ \ \ readOnly:\ true
+\ \ \ \ \ \ \ \ \ \ \-\ name:\ debugfs
+\ \ \ \ \ \ \ \ \ \ \ \ mountPath:\ /sys/kernel/debug
+\ \ \ \ \ \ \ \ \ \ \-\ name:\ docker\-sock
+\ \ \ \ \ \ \ \ \ \ \ \ mountPath:\ /var/run/docker.sock
+\ \ \ \ \ \ \ \ \ \ \-\ name:\ journal
+\ \ \ \ \ \ \ \ \ \ \ \ mountPath:\ /opt/spm/st\-agent
+\ \ \ \ \ \ \ \ \ \ \-\ name:\ user\-lib
+\ \ \ \ \ \ \ \ \ \ \ \ mountPath:\ /host/usr/lib
+\ \ \ \ \ \ \ \ securityContext:
+\ \ \ \ \ \ \ \ \ \ privileged:\ true
+\ \ \ \ \ \ \ \ ports:
+\ \ \ \ \ \ \ \ \ \ \-\ name:\ http
+\ \ \ \ \ \ \ \ \ \ \ \ containerPort:\ 80
+\ \ \ \ \ \ \ \ \ \ \ \ protocol:\ TCP
+\ \ \ \ \ \ volumes:
+\ \ \ \ \ \ \ \ \-\ name:\ procfs
+\ \ \ \ \ \ \ \ \ \ hostPath:
+\ \ \ \ \ \ \ \ \ \ \ \ path:\ /proc
+\ \ \ \ \ \ \ \ \-\ name:\ sysfs
+\ \ \ \ \ \ \ \ \ \ hostPath:
+\ \ \ \ \ \ \ \ \ \ \ \ path:\ /sys
+\ \ \ \ \ \ \ \ \-\ name:\ etc
+\ \ \ \ \ \ \ \ \ \ hostPath:
+\ \ \ \ \ \ \ \ \ \ \ \ path:\ /etc
+\ \ \ \ \ \ \ \ \-\ name:\ debugfs
+\ \ \ \ \ \ \ \ \ \ hostPath:
+\ \ \ \ \ \ \ \ \ \ \ \ path:\ /sys/kernel/debug
+\ \ \ \ \ \ \ \ \-\ name:\ docker\-sock
+\ \ \ \ \ \ \ \ \ \ hostPath:
+\ \ \ \ \ \ \ \ \ \ \ \ path:\ /var/run/docker.sock
+\ \ \ \ \ \ \ \ \-\ name:\ journal
+\ \ \ \ \ \ \ \ \ \ hostPath:
+\ \ \ \ \ \ \ \ \ \ \ \ path:\ /tmp
+\ \ \ \ \ \ \ \ \-\ name:\ user\-lib
+\ \ \ \ \ \ \ \ \ \ hostPath:
+\ \ \ \ \ \ \ \ \ \ \ \ path:\ /usr/lib
+\ \ \ \ \ \ tolerations:
+\ \ \ \ \ \ \-\ effect:\ NoSchedule
+\ \ \ \ \ \ \ \ key:\ node\-role.kubernetes.io/master
+\f[]
+.fi
+.PP
+Deploy the DaemonSet:
+.IP
+.nf
+\f[C]
+kubectl\ create\ st\-agent.ymml\ 
+\f[]
+.fi
+.SS Environment Variables
+.PP
+You can adjust the configuration of Sematext Agent with additional
+environment variables:
+.PP
+.TS
+tab(@);
+l l.
+T{
+Variable
+T}@T{
+Description
+T}
+_
+T{
+\f[B]Firewall and Proxy Settings\f[]
+T}@T{
+T}
+T{
+PROXY_HOST, PROXY_PORT, PROXY_PASSWORD, PROXY_USERNAME
+T}@T{
+These variables specify the settings for the proxy server.
+T}
+T{
+\f[B]Docker Connection Options\f[]
+T}@T{
+T}
+T{
+DOCKER_TRANSPORT
+T}@T{
+Defines the transport protocol for communication with Docker daemon.
+The default transport is UNIX domain socket
+(\f[C]unix:///var/run/docker.sock\f[]).
+For TCP transport you have to specify an IP address that\[aq]s reachable
+from container
+(\f[C]DOCKER_TRANSPORT=tcp://ip\-reachable\-from\-container:2375/\f[]).
+T}
+T{
+DOCKER_CERT_PATH
+T}@T{
+Specifies the path to your certificate files when communication with
+Docker daemon is carried out over secure channel.
+T}
+T{
+\f[B]Container Monitoring\f[]
+T}@T{
+T}
+T{
+CONTAINER_ENABLED
+T}@T{
+Determines whether the container collector is enabled.
+Default value is \f[C]true\f[].
+To disable container collector set \f[C]CONTAINER_ENABLED=false\f[].
+T}
+T{
+CONTAINER_MATCH_BY_IMAGE, CONTAINER_MATCH_BY_NAME
+T}@T{
+These variables control the inclusion of detected containers either by
+image or container name.
+Can contain a comma separated list of full container/images names or
+regular expression patterns
+(\f[C]CONTAINER_MATCH_BY_IMAGE=nginx,mongo*\f[]).
+T}
+T{
+CONTAINER_SKIP_BY_IMAGE, CONTAINER_SKIP_BY_NAME
+T}@T{
+These variables control the exclusion of detected containers either by
+image or container name.
+Can contain a comma separated list of full container/images names or
+regular expression patterns
+(\f[C]CONTAINER_SKIP_BY_IMAGE=nginx,mongo*\f[]).
+T}
+T{
+\f[B]Kubernetes Settings\f[]
+T}@T{
+T}
+T{
+KUBERNETES_ENABLED
+T}@T{
+Specifies if the Kubernetes monitoring functionality is active.
+Default value is \f[C]true\f[].
+To disable Kubernetes collector set \f[C]KUBERNETES_ENABLED=false\f[].
+T}
+T{
+KUBERNETES_EVENTS_NAMESPACE
+T}@T{
+Designates a namespace for Kubernetes event watcher.
+By default all namespaces are watched for Kubernetes events and
+forwarded to event/log receivers.
+T}
+T{
+KUBERNETES_NAMESPACES
+T}@T{
+Defines the comma separated list of namespaces that are queried for
+Kubernetes resources such as pods or deployments.
+By default all namespaces are fetched.
+You can adjust specific namespaces such as
+\f[C]KUBERNETES_NAMESPACES=default,kube\-system\f[].
+T}
+T{
+\f[B]Process Monitoring\f[]
+T}@T{
+T}
+T{
+PROCESS_ENABLED
+T}@T{
+Specifies if process metrics collection is enabled.
+To disable process metrics collector set \f[C]PROCESS_ENABLED=false\f[].
+T}
+T{
+\f[B]Network Monitoring\f[]
+T}@T{
+T}
+T{
+NETRACER_ENABLED
+T}@T{
+Controls whether network topology collector is turned on.
+Network tracer is disabled by default.
+To enable network tracer set \f[C]NETRACER_ENABLED=true\f[].
+In order to capture network traffic from the host, you should start the
+container with host networking by passing the \f[C]\-\-network=host\f[]
+argument to Docker engine.
+This is only required when pcap network tracer is used.
+T}
+T{
+NETRACER_INPUT_FILTER, NETRACER_OUTPUT_FILTER
+T}@T{
+When specified, applies filtering expressions to all inbound/outbound
+packets (\f[C]NETRACER_INPUT_FILTER="dst\ port\ 8923\ and\ tcp"\f[]).
+T}
+T{
+NETRACER_INTERFACES
+T}@T{
+A comma\-separated list of network interfaces to monitor.
+By default all interfaces are tracked.
+T}
+T{
+NETRACER_LOOPBACK
+T}@T{
+Determines whether loopback interfaces should be captured for network
+traffic.
+By default network packets are not captured from loopback interfaces.
+T}
+T{
+NETRACER_EBPF_TRACK_TCP
+T}@T{
+Determines whether TCP connections are tracked by ebpf tracer.
+By default TCP traffic statistics are collected.
+T}
+T{
+NETRACER_EBPF_TRACK_UDP
+T}@T{
+Determines whether UDP connections are tracked by ebpf tracer.
+By default UDP traffic statistics are collected.
+T}
+T{
+\f[B]Troubleshooting Options\f[]
+T}@T{
+T}
+T{
+CPUPROFILE
+T}@T{
+Name of the file where \f[C]pprof\f[] CPU profile is dumped.
+When provided this turns on the CPU profiling and writes data to a given
+file.
+T}
+T{
+LOGGING_LEVEL
+T}@T{
+Defines the minimal allowed log level.
+Default log level is \f[C]info\f[].
+You can choose between \f[C]debug\f[], \f[C]info\f[],
+\f[C]warn/warning\f[], \f[C]error\f[], \f[C]fatal\f[] and
+\f[C]panic\f[].
+T}
+T{
+LOGGING_WRITE_EVENTS
+T}@T{
+Defines whether event payloads are written to standard output stream.
+Useful for debugging.
+You can disable this feature by passing
+\f[C]LOGGING_WRITE_EVENTS=false\f[] environment variable during
+container bootstrap.
+T}
+T{
+\f[B]Other Agent Settings\f[]
+T}@T{
+T}
+T{
+INTERVAL
+T}@T{
+Specifies the collection interval for metrics collectors.
+Default interval is \f[C]10s\f[].
+You can specify a duration for collection interval in seconds, minutes
+or hours (\f[C]INTERVAL=1m\f[]).
+T}
+T{
+JOURNAL_DIR
+T}@T{
+Defines the data directory where failed events are stored.
+Agent periodically scans this directory and resends events to the
+backend.
+T}
+T{
+JOURNAL_RETRY_INTERVAL
+T}@T{
+Specifies how often journal directory is scanned for failed events.
+Default interval is \f[C]30s\f[].
+You can specify a different interval in either seconds, minutes or hours
+(\f[C]JOURNAL_RETRY_INTERVAL=5m\f[])
+T}
+T{
+AUTODISCO_TEMPLATES_PATH
+T}@T{
+Defines the location of the \f[C]autodisco.yml\f[] file that contains
+definitions of patterns involved in app auto\-discovery.
+T}
+T{
+HOSTNAME_ALIAS
+T}@T{
+When specified it overrides the original host name.
+T}
+.TE
