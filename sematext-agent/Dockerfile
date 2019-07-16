@@ -3,9 +3,9 @@ MAINTAINER Sematext Group Inc. <redhat@sematext.com>
 ### Atomic/OpenShift Labels - https://github.com/projectatomic/ContainerApplicationGenericLabels
 LABEL name="sematext/agent" \
       vendor="Sematext Group Inc." \
-      version="2.0" \
-      release="2" \
-      summary="Sematext Logagent" \
+      version="0.8.2" \
+      release="0.8.2" \
+      summary="Sematext Agent" \
       description="Sematext Agent is a modern, container-native metric collection agent for containers. It runs as a tiny container on every  host and provides automatic collection and processing of host and container metrics for all cluster nodes and all auto-discovered containers. It works with Open Shift/Kubernetes or any other platform supporting containers." \
 ### Required labels above - recommended below
       url="https://sematext.com/docker" \
