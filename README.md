@@ -1,1 +1,2 @@
-# Dockerfile for RedHat Enterprise
+# Dockerfile for RedHat Enterprise.
+
